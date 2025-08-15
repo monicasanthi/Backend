@@ -7,21 +7,34 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-// Handle Create
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $title = trim($_POST['title']);
-    $content = trim($_POST['content']);
+$id = $_GET['id'] ?? null;
 
-    if ($title && $content) {
-        $stmt = $conn->prepare("INSERT INTO posts (title, content) VALUES (?, ?)");
-        $stmt->bind_param("ss", $title, $content);
-        $stmt->execute();
-        $stmt->close();
-    }
+if (!$id) {
+    header("Location: index.php");
+    exit();
 }
 
-// Fetch all posts
-$result = $conn->query("SELECT * FROM posts ORDER BY created_at DESC");
+// Fetch post
+$stmt = $conn->prepare("SELECT title, content FROM posts WHERE id=?");
+$stmt->bind_param("i", $id);
+$stmt->execute();
+$stmt->bind_result($title, $content);
+$stmt->fetch();
+$stmt->close();
+
+// Update post
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    $new_title = trim($_POST['title']);
+    $new_content = trim($_POST['content']);
+
+    if ($new_title && $new_content) {
+        $stmt = $conn->prepare("UPDATE posts SET title=?, content=? WHERE id=?");
+        $stmt->bind_param("ssi", $new_title, $new_content, $id);
+        $stmt->execute();
+        header("Location: index.php");
+        exit();
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -29,7 +42,7 @@ $result = $conn->query("SELECT * FROM posts ORDER BY created_at DESC");
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Blog - Dashboard</title>
+<title>Edit Post</title>
 <style>
     body {
         font-family: Arial, sans-serif;
@@ -60,7 +73,7 @@ $result = $conn->query("SELECT * FROM posts ORDER BY created_at DESC");
         background: rgba(255, 255, 255, 0.4);
     }
     main {
-        max-width: 900px;
+        max-width: 700px;
         margin: 30px auto;
         background: white;
         padding: 25px;
@@ -81,7 +94,7 @@ $result = $conn->query("SELECT * FROM posts ORDER BY created_at DESC");
     }
     form textarea {
         resize: none;
-        height: 100px;
+        height: 120px;
     }
     form button {
         background: linear-gradient(90deg, #ff7e5f, #ff2f92);
@@ -95,32 +108,14 @@ $result = $conn->query("SELECT * FROM posts ORDER BY created_at DESC");
     form button:hover {
         opacity: 0.92;
     }
-    .post {
-        border: 1px solid #ddd;
-        padding: 15px;
+    .back-link {
+        display: inline-block;
         margin-top: 15px;
-        border-radius: 5px;
-        background: #fafafa;
-    }
-    .post h4 {
-        margin: 0;
-        color: #ff2f92;
-    }
-    .post p {
-        margin: 8px 0;
-        color: #555;
-        line-height: 1.5;
-    }
-    .post small {
-        color: #888;
-    }
-    .post a {
         color: #ff7e5f;
         text-decoration: none;
-        margin-right: 10px;
-        font-size: 0.9rem;
+        font-size: 0.95rem;
     }
-    .post a:hover {
+    .back-link:hover {
         text-decoration: underline;
     }
 </style>
@@ -128,28 +123,18 @@ $result = $conn->query("SELECT * FROM posts ORDER BY created_at DESC");
 <body>
 
 <header>
-    <h2>Welcome, <?php echo $_SESSION['username']; ?>!</h2>
-    <a href="logout.php">Logout</a>
+    <h2>Edit Post</h2>
+    <a href="index.php">Back</a>
 </header>
 
 <main>
-    <h3>Create New Post</h3>
+    <h3>Update Your Post</h3>
     <form method="post">
-        <input type="text" name="title" placeholder="Post Title" required>
-        <textarea name="content" placeholder="Post Content" required></textarea>
-        <button type="submit">Add Post</button>
+        <input type="text" name="title" value="<?php echo htmlspecialchars($title); ?>" required>
+        <textarea name="content" required><?php echo htmlspecialchars($content); ?></textarea>
+        <button type="submit">Update Post</button>
     </form>
-
-    <h3>All Posts</h3>
-    <?php while ($row = $result->fetch_assoc()): ?>
-        <div class="post">
-            <h4><?php echo htmlspecialchars($row['title']); ?></h4>
-            <p><?php echo nl2br(htmlspecialchars($row['content'])); ?></p>
-            <small>Posted on <?php echo $row['created_at']; ?></small><br>
-            <a href="edit.php?id=<?php echo $row['id']; ?>">Edit</a>
-            <a href="delete.php?id=<?php echo $row['id']; ?>" onclick="return confirm('Are you sure?')">Delete</a>
-        </div>
-    <?php endwhile; ?>
+    <a class="back-link" href="index.php">⬅ Back to Dashboard</a>
 </main>
 
 </body>
