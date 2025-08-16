@@ -7,8 +7,8 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-// Handle Create
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
+// Handle Create Post
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['create_post'])) {
     $title = trim($_POST['title']);
     $content = trim($_POST['content']);
 
@@ -20,8 +20,28 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 }
 
-// Fetch all posts
-$result = $conn->query("SELECT * FROM posts ORDER BY created_at DESC");
+// ---------- SEARCH + PAGINATION ----------
+$search = $_GET['search'] ?? '';
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+$limit = 5; // posts per page
+$offset = ($page - 1) * $limit;
+
+// Count total posts (with search filter)
+$countQuery = "SELECT COUNT(*) as total FROM posts WHERE title LIKE ? OR content LIKE ?";
+$stmt = $conn->prepare($countQuery);
+$like = "%" . $search . "%";
+$stmt->bind_param("ss", $like, $like);
+$stmt->execute();
+$countResult = $stmt->get_result()->fetch_assoc();
+$totalPosts = $countResult['total'];
+$totalPages = ceil($totalPosts / $limit);
+
+// Fetch posts with search + pagination
+$query = "SELECT * FROM posts WHERE title LIKE ? OR content LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?";
+$stmt = $conn->prepare($query);
+$stmt->bind_param("ssii", $like, $like, $limit, $offset);
+$stmt->execute();
+$result = $stmt->get_result();
 ?>
 
 <!DOCTYPE html>
@@ -71,7 +91,7 @@ $result = $conn->query("SELECT * FROM posts ORDER BY created_at DESC");
         margin-bottom: 15px;
         color: #333;
     }
-    form input, form textarea, form button {
+    .post-form input, .post-form textarea, .post-form button {
         width: 100%;
         padding: 10px;
         margin-top: 8px;
@@ -94,6 +114,36 @@ $result = $conn->query("SELECT * FROM posts ORDER BY created_at DESC");
     }
     form button:hover {
         opacity: 0.92;
+    }
+    .search-box {
+        margin: 20px 0;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 10px;              /* gap between input and button */
+        max-width: 600px;
+    }
+    .search-box input {
+        flex: 1;
+        padding: 10px 12px;
+        border-radius: 5px;
+        border: 1px solid #ccc;
+        font-size: 1rem;
+    }
+    .search-box button {
+        padding: 10px 20px;
+        border: none;
+        background: #ff7e5f;
+        color: white;
+        font-weight: bold;
+        cursor: pointer;
+        border-radius: 5px;
+        white-space: nowrap;
+        margin-top: auto;
+        width: 150px;
+    }
+    .search-box button:hover {
+        opacity: 0.9;
     }
     .post {
         border: 1px solid #ddd;
@@ -123,6 +173,25 @@ $result = $conn->query("SELECT * FROM posts ORDER BY created_at DESC");
     .post a:hover {
         text-decoration: underline;
     }
+    .pagination {
+        margin-top: 20px;
+        text-align: center;
+    }
+    .pagination a {
+        display: inline-block;
+        margin: 0 5px;
+        padding: 8px 12px;
+        background: #ff7e5f;
+        color: white;
+        text-decoration: none;
+        border-radius: 5px;
+    }
+    .pagination a.active {
+        background: #ff2f92;
+    }
+    .pagination a:hover {
+        opacity: 0.85;
+    }
 </style>
 </head>
 <body>
@@ -134,22 +203,49 @@ $result = $conn->query("SELECT * FROM posts ORDER BY created_at DESC");
 
 <main>
     <h3>Create New Post</h3>
-    <form method="post">
+    <form method="post" class ="post-form">
         <input type="text" name="title" placeholder="Post Title" required>
         <textarea name="content" placeholder="Post Content" required></textarea>
-        <button type="submit">Add Post</button>
+        <button type="submit" name="create_post">Add Post</button>
+    </form>
+
+    <h3>Search Posts</h3>
+    <form method="get" class="search-box">
+        <input type="text" name="search" placeholder="Search by title or content..." value="<?php echo htmlspecialchars($search); ?>">
+        <button type="submit">Search</button>
     </form>
 
     <h3>All Posts</h3>
-    <?php while ($row = $result->fetch_assoc()): ?>
-        <div class="post">
-            <h4><?php echo htmlspecialchars($row['title']); ?></h4>
-            <p><?php echo nl2br(htmlspecialchars($row['content'])); ?></p>
-            <small>Posted on <?php echo $row['created_at']; ?></small><br>
-            <a href="edit.php?id=<?php echo $row['id']; ?>">Edit</a>
-            <a href="delete.php?id=<?php echo $row['id']; ?>" onclick="return confirm('Are you sure?')">Delete</a>
-        </div>
-    <?php endwhile; ?>
+    <?php if ($result->num_rows > 0): ?>
+        <?php while ($row = $result->fetch_assoc()): ?>
+            <div class="post">
+                <h4><?php echo htmlspecialchars($row['title']); ?></h4>
+                <p><?php echo nl2br(htmlspecialchars($row['content'])); ?></p>
+                <small>Posted on <?php echo $row['created_at']; ?></small><br>
+                <a href="edit.php?id=<?php echo $row['id']; ?>">Edit</a>
+                <a href="delete.php?id=<?php echo $row['id']; ?>" onclick="return confirm('Are you sure?')">Delete</a>
+            </div>
+        <?php endwhile; ?>
+    <?php else: ?>
+        <p>No posts found.</p>
+    <?php endif; ?>
+
+    <!-- Pagination -->
+    <div class="pagination">
+        <?php if ($page > 1): ?>
+            <a href="?search=<?php echo urlencode($search); ?>&page=<?php echo $page-1; ?>">Prev</a>
+        <?php endif; ?>
+
+        <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+            <a href="?search=<?php echo urlencode($search); ?>&page=<?php echo $i; ?>" class="<?php echo $i == $page ? 'active' : ''; ?>">
+                <?php echo $i; ?>
+            </a>
+        <?php endfor; ?>
+
+        <?php if ($page < $totalPages): ?>
+            <a href="?search=<?php echo urlencode($search); ?>&page=<?php echo $page+1; ?>">Next</a>
+        <?php endif; ?>
+    </div>
 </main>
 
 </body>
