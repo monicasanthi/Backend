@@ -8,29 +8,27 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $id = $_GET['id'] ?? null;
-
-if (!$id) {
-    header("Location: index.php");
-    exit();
-}
+if (!$id) { header("Location: index.php"); exit(); }
 
 // Fetch post
-$stmt = $conn->prepare("SELECT title, content FROM posts WHERE id=?");
-$stmt->bind_param("i", $id);
-$stmt->execute();
-$stmt->bind_result($title, $content);
-$stmt->fetch();
-$stmt->close();
+$stmt = $conn->prepare("SELECT * FROM posts WHERE id=?");
+$stmt->execute([$id]);
+$post = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if (!$post) { die("Post not found"); }
+
+// Authorization check
+if ($_SESSION['role'] !== 'admin' && $post['user_id'] != $_SESSION['user_id']) {
+    die("Unauthorized");
+}
 
 // Update post
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $new_title = trim($_POST['title']);
     $new_content = trim($_POST['content']);
-
     if ($new_title && $new_content) {
         $stmt = $conn->prepare("UPDATE posts SET title=?, content=? WHERE id=?");
-        $stmt->bind_param("ssi", $new_title, $new_content, $id);
-        $stmt->execute();
+        $stmt->execute([$new_title, $new_content, $id]);
         header("Location: index.php");
         exit();
     }

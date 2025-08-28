@@ -2,25 +2,23 @@
 session_start();
 include "db.php";
 
-if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
-    exit();
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
+    die("Unauthorized");
 }
 
 $id = $_GET['id'] ?? null;
+if (!$id) { header("Location: index.php"); exit(); }
 
-if (!$id) {
-    header("Location: index.php");
-    exit();
-}
+$stmt = $conn->prepare("DELETE FROM posts WHERE id=?");
+$stmt->execute([$id]);
 
-// If user confirms deletion
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['confirm'])) {
+// Handle confirmation
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm'])) {
     $stmt = $conn->prepare("DELETE FROM posts WHERE id=?");
-    $stmt->bind_param("i", $id);
-    $stmt->execute();
-    header("Location: index.php");
-    exit();
+    $stmt->execute([$id]);
+    
+header("Location: index.php");
+exit();
 }
 ?>
 

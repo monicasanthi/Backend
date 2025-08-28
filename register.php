@@ -4,17 +4,22 @@ include "db.php";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = trim($_POST['username']);
-    $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+    $password = trim($_POST['password']);
 
-    $stmt = $conn->prepare("INSERT INTO users (username, password) VALUES (?, ?)");
-    $stmt->bind_param("ss", $username, $password);
-
-    if ($stmt->execute()) {
-        echo "<script>alert('Registration successful! You can now log in.'); window.location='login.php';</script>";
+    if (strlen($username) < 3 || strlen($password) < 5) {
+        echo "<script>alert('Username must be at least 3 chars & Password at least 5 chars');</script>";
     } else {
-        echo "<script>alert('Error: Username may already exist.');</script>";
+        $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+
+        try {
+            $stmt = $conn->prepare("INSERT INTO users (username, password, role) VALUES (?, ?, 'user')");
+            $stmt->execute([$username, $hashedPassword]);
+
+            echo "<script>alert('Registration successful! You can now log in.'); window.location='login.php';</script>";
+        } catch (PDOException $e) {
+            echo "<script>alert('Error: Username may already exist.');</script>";
+        }
     }
-    $stmt->close();
 }
 ?>
 <!DOCTYPE html>

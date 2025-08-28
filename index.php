@@ -8,40 +8,40 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 // Handle Create Post
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['create_post'])) {
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['create_post']) && $_SESSION['role'] !== 'user') {
     $title = trim($_POST['title']);
     $content = trim($_POST['content']);
 
     if ($title && $content) {
-        $stmt = $conn->prepare("INSERT INTO posts (title, content) VALUES (?, ?)");
-        $stmt->bind_param("ss", $title, $content);
-        $stmt->execute();
-        $stmt->close();
+        $stmt = $conn->prepare("INSERT INTO posts (user_id, title, content) VALUES (?, ?, ?)");
+        $stmt->execute([$_SESSION['user_id'], $title, $content]);
     }
 }
 
 // ---------- SEARCH + PAGINATION ----------
 $search = $_GET['search'] ?? '';
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-$limit = 5; // posts per page
+$limit = 5;
 $offset = ($page - 1) * $limit;
 
-// Count total posts (with search filter)
-$countQuery = "SELECT COUNT(*) as total FROM posts WHERE title LIKE ? OR content LIKE ?";
-$stmt = $conn->prepare($countQuery);
-$like = "%" . $search . "%";
-$stmt->bind_param("ss", $like, $like);
-$stmt->execute();
-$countResult = $stmt->get_result()->fetch_assoc();
-$totalPosts = $countResult['total'];
+// Count total
+$countQuery = $conn->prepare("SELECT COUNT(*) FROM posts WHERE title LIKE ? OR content LIKE ?");
+$like = "%$search%";
+$countQuery->execute([$like, $like]);
+$totalPosts = $countQuery->fetchColumn();
 $totalPages = ceil($totalPosts / $limit);
 
-// Fetch posts with search + pagination
-$query = "SELECT * FROM posts WHERE title LIKE ? OR content LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?";
-$stmt = $conn->prepare($query);
-$stmt->bind_param("ssii", $like, $like, $limit, $offset);
+// Fetch posts
+$stmt = $conn->prepare("SELECT posts.*, users.username FROM posts 
+                        JOIN users ON posts.user_id = users.id
+                        WHERE title LIKE ? OR content LIKE ? 
+                        ORDER BY created_at DESC LIMIT ? OFFSET ?");
+$stmt->bindValue(1, $like, PDO::PARAM_STR);
+$stmt->bindValue(2, $like, PDO::PARAM_STR);
+$stmt->bindValue(3, $limit, PDO::PARAM_INT);
+$stmt->bindValue(4, $offset, PDO::PARAM_INT);
 $stmt->execute();
-$result = $stmt->get_result();
+$posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -202,30 +202,38 @@ $result = $stmt->get_result();
 </header>
 
 <main>
+    <?php if ($_SESSION['role'] !== 'user'): ?>
     <h3>Create New Post</h3>
-    <form method="post" class ="post-form">
+    <form method="post" class="post-form">
         <input type="text" name="title" placeholder="Post Title" required>
         <textarea name="content" placeholder="Post Content" required></textarea>
         <button type="submit" name="create_post">Add Post</button>
     </form>
+    <?php endif; ?>
 
     <h3>Search Posts</h3>
     <form method="get" class="search-box">
-        <input type="text" name="search" placeholder="Search by title or content..." value="<?php echo htmlspecialchars($search); ?>">
+        <input type="text" name="search" placeholder="Search..." value="<?php echo htmlspecialchars($search); ?>">
         <button type="submit">Search</button>
     </form>
 
     <h3>All Posts</h3>
-    <?php if ($result->num_rows > 0): ?>
-        <?php while ($row = $result->fetch_assoc()): ?>
+    <?php if ($posts): ?>
+        <?php foreach ($posts as $row): ?>
             <div class="post">
                 <h4><?php echo htmlspecialchars($row['title']); ?></h4>
                 <p><?php echo nl2br(htmlspecialchars($row['content'])); ?></p>
-                <small>Posted on <?php echo $row['created_at']; ?></small><br>
-                <a href="edit.php?id=<?php echo $row['id']; ?>">Edit</a>
-                <a href="delete.php?id=<?php echo $row['id']; ?>" onclick="return confirm('Are you sure?')">Delete</a>
+                <small>Posted by <?php echo htmlspecialchars($row['username']); ?> on <?php echo $row['created_at']; ?></small><br>
+                
+                <?php if ($_SESSION['role'] === 'admin' || ($_SESSION['role'] === 'editor' && $row['user_id'] == $_SESSION['user_id'])): ?>
+                    <a href="edit.php?id=<?php echo $row['id']; ?>">Edit</a>
+                <?php endif; ?>
+
+                <?php if ($_SESSION['role'] === 'admin'): ?>
+                    <a href="delete.php?id=<?php echo $row['id']; ?>" onclick="return confirm('Are you sure?')">Delete</a>
+                <?php endif; ?>
             </div>
-        <?php endwhile; ?>
+        <?php endforeach; ?>
     <?php else: ?>
         <p>No posts found.</p>
     <?php endif; ?>

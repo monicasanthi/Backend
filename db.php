@@ -1,14 +1,13 @@
 <?php
 $host = "localhost";
-$user = "root"; // your MySQL username
-$pass = "";     // your MySQL password
+$user = "root"; 
+$pass = "";     
 $dbname = "blog";
 
-// Create connection
-$conn = new mysqli($host, $user, $pass, $dbname);
-
-// Check connection
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
+try {
+    $conn = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
+    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    die("Connection failed: " . $e->getMessage());
 }
 ?>
